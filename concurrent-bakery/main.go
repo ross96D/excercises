@@ -1,5 +1,11 @@
 package main
 
+/*
+This is a excersice of my own. Quickly designed to play arround concurrency.
+
+Is about a queue thats get enqueued and dequeued constantly
+
+*/
 import (
 	"fmt"
 	"log"
