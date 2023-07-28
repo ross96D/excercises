@@ -25,9 +25,9 @@ func Cost(books []int) int {
 
 	total := ordered[4] * 600 * 5
 	total += (ordered[3] - ordered[4]) * 640 * 4
-	total += (ordered[2] - ordered[3]) * 640 * 3
-	total += (ordered[1] - ordered[2]) * 640 * 2
-	total += (ordered[0] - ordered[1]) * 640
+	total += (ordered[2] - ordered[3]) * 720 * 3
+	total += (ordered[1] - ordered[2]) * 760 * 2
+	total += (ordered[0] - ordered[1]) * 800
 
 	return total
 }
