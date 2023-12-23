@@ -11,37 +11,46 @@ import (
 	"log"
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 var mu sync.Mutex
 var wg sync.WaitGroup
 var logger *log.Logger = log.Default()
-var r *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano() / 3))
+var r randSecure = randSecure{
+	mut: sync.Mutex{},
+	r:   rand.New(rand.NewSource(time.Now().UnixNano() / 3)),
+}
+
+type randSecure struct {
+	r   *rand.Rand
+	mut sync.Mutex
+}
 
 type Client struct {
 	id         int
 	name       string
 	likeCookie bool
 	enterTime  time.Time
-	time       time.Duration
+	// time       time.Duration
 }
 
 type ClientQueue struct {
-	length        int
-	capacity      int
+	length        atomic.Int32
+	capacity      atomic.Int32
 	arr           []Client
-	indexPush     int
-	indexPop      int
+	indexPush     atomic.Int32
+	indexPop      atomic.Int32
 	waitToBeEmpty bool
 }
 
 func (c *ClientQueue) Default() {
-	arr := make([]Client, 90000, 90000)
-	c.length = 0
-	c.capacity = 90000
+	arr := make([]Client, 90000)
+	c.length.Store(0)
+	c.capacity.Store(90000)
 	c.arr = arr
-	c.indexPush = 0
+	c.indexPush.Store(0)
 	c.waitToBeEmpty = false
 }
 
@@ -51,28 +60,28 @@ func (c *ClientQueue) add(v *Client) {
 	if c.length == c.capacity {
 		return
 	}
-	v.id = c.indexPush
-	c.arr[c.indexPush] = *v
-	c.indexPush++
+	v.id = int(c.indexPush.Load())
+	c.arr[c.indexPush.Load()] = *v
+	c.indexPush.Add(1)
 	if c.indexPush == c.capacity {
-		c.indexPush = 0
+		c.indexPush.Store(0)
 	}
-	c.length += 1
+	c.length.Add(1)
 }
 
 func (c *ClientQueue) remove() (Client, bool) {
 	mu.Lock()
 	defer mu.Unlock()
-	if c.length == 0 {
+	if c.length.Load() == 0 {
 		return Client{}, false
 	}
-	c.length--
-	e := c.arr[c.indexPop]
-	c.indexPop++
+	c.length.Add(-1)
+	e := c.arr[c.indexPop.Load()]
+	c.indexPop.Add(1)
 	if c.indexPop == c.capacity {
-		c.indexPop = 0
+		c.indexPop.Store(0)
 	}
-	if c.waitToBeEmpty && c.length == 0 {
+	if c.waitToBeEmpty && c.length.Load() == 0 {
 		wg.Done()
 	}
 	return e, true
@@ -81,7 +90,7 @@ func (c *ClientQueue) remove() (Client, bool) {
 func main() {
 	queue := ClientQueue{}
 	queue.Default()
-	fmt.Println(queue.capacity)
+	fmt.Println(queue.capacity.Load())
 
 	wg.Add(1)
 
@@ -97,7 +106,7 @@ func main() {
 
 func addClient(queue *ClientQueue) {
 	for i := 0; i < 90000; {
-		if queue.length < queue.capacity {
+		if queue.length.Load() < queue.capacity.Load() {
 			// logger.Println(i)
 			client := generatedRandomClient()
 			queue.add(&client)
@@ -111,12 +120,14 @@ func addClient(queue *ClientQueue) {
 
 func serveClient(queue *ClientQueue) {
 	for {
-		if queue.length != 0 {
+		if queue.length.Load() != 0 {
 			c, err := queue.remove()
-			if err == false {
+			if !err {
 				continue
 			}
-			f := r.Float32()
+			r.mut.Lock()
+			f := r.r.Float32()
+			r.mut.Unlock()
 			s := int(f * 150)
 			time.Sleep(time.Duration(s) * time.Nanosecond)
 			val, delay := valoracion(&c.enterTime)
@@ -126,7 +137,7 @@ func serveClient(queue *ClientQueue) {
 }
 
 func valoracion(t *time.Time) (int8, int64) {
-	elpased := time.Now().Sub(*t).Milliseconds()
+	elpased := time.Since(*t).Milliseconds()
 
 	if elpased < 10 {
 		return 5, int64(elpased)
@@ -142,14 +153,18 @@ func valoracion(t *time.Time) (int8, int64) {
 }
 
 func generatedRandomClient() Client {
-	f := r.Float32()
+	r.mut.Lock()
+	f := r.r.Float32()
+	r.mut.Unlock()
 	return Client{name: genRandName(), likeCookie: f < 0.5, enterTime: time.Now()}
 }
 
 func genRandName() string {
 	name := [4]string{"Carlos", "Alberto", "Amelia", ""}
 
-	f := r.Float32()
+	r.mut.Lock()
+	f := r.r.Float32()
+	r.mut.Unlock()
 	if f < 0.25 {
 		return name[0]
 	} else if f < 0.5 {

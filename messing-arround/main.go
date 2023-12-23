@@ -1,28 +1,52 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"sync"
 	"time"
 )
 
 func main() {
-	fmt.Println("Holas")
-
-	w := async()
-	w.Wait()
-	fmt.Println("COMIDA")
-	time.Sleep(2 * time.Second)
+	if false {
+		// Syncgroup()
+	} else {
+		Ctx()
+	}
 }
 
-func async() *sync.WaitGroup {
-	w := sync.WaitGroup{}
-	w.Add(1)
-	go func() {
-		fmt.Println("MANDAR LA GOROUTINE")
-		w.Done()
-		fmt.Println("TERMINO LA GOROUTINE")
-	}()
+func Ctx() {
+	ctx := context.TODO()
+	doSomething(ctx)
+}
 
-	return &w
+func doSomething(ctx context.Context) {
+	ctx, cancelCtx := context.WithCancel(ctx)
+
+	printCh := make(chan int)
+	go doAnother(ctx, printCh)
+
+	for num := 1; num <= 3; num++ {
+		printCh <- num
+	}
+
+	cancelCtx()
+
+	time.Sleep(100 * time.Millisecond)
+
+	fmt.Printf("doSomething: finished\n")
+}
+
+func doAnother(ctx context.Context, printCh <-chan int) {
+	for {
+		select {
+		case <-ctx.Done():
+			if err := ctx.Err(); err != nil {
+				fmt.Printf("doAnother err: %s\n", err)
+			}
+			fmt.Printf("doAnother: finished\n")
+			return
+		case num := <-printCh:
+			fmt.Printf("doAnother: %d\n", num)
+		}
+	}
 }
